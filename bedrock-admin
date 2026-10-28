@@ -1,0 +1,59 @@
+#!/bin/bash
+
+# bedrock-admin - Wrapper to run ghcr.io/multi-linux-manager/bedrock-admin-container:latest
+# Copyright (C) 2026 SUSE LLC
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+IMAGE="ghcr.io/multi-linux-manager/bedrock-admin-container:latest"
+
+if ! command -v podman >/dev/null 2>&1; then
+  echo "ERROR: Can't find the podman comand (most likely it is not installed)"
+fi
+
+# Figure out where the real script is, even if we call it from a symlink
+# Hopefully this works on MacOS as well, feedback welcome.
+SCRIPT_SOURCE="${BASH_SOURCE[0]}"
+while [ -h "$SCRIPT_SOURCE" ]; do
+  SCRIPT_DIR=$(cd -P "$(dirname "$SCRIPT_SOURCE")" &> /dev/null && pwd)
+  SCRIPT_SOURCE=$(readlink "$SCRIPT_SOURCE")
+  [[ $SCRIPT_SOURCE != /* ]] && SCRIPT_SOURCE="$SCRIPT_DIR/$SCRIPT_SOURCE"
+done
+SCRIPT_DIR=$(cd -P "$(dirname "$SCRIPT_SOURCE")" &> /dev/null && pwd)
+
+usage() {
+  echo "Usage: $(basename "$0") [-d <configs_dir>] [-h]"
+  echo "  -d <configs_dir>  Folder to bind mount at /home/bedrock/bedrock-configs"
+  echo "                    (default: the folder where this script is: ${SCRIPT_DIR})"
+  echo "  -h                Show this help"
+}
+
+CONFIGS_DIR="${SCRIPT_DIR}"
+while getopts ":d:h" opt; do
+  case ${opt} in
+    d) CONFIGS_DIR="${OPTARG}" ;;
+    h) usage; exit 0 ;;
+    :) echo "ERROR: Option -${OPTARG} requires an argument"; usage; exit 1 ;;
+    \?) echo "ERROR: Invalid option -${OPTARG}"; usage; exit 1 ;;
+  esac
+done
+
+if [ ! -d "${CONFIGS_DIR}" ]; then
+  echo "ERROR: ${CONFIGS_DIR} is not a directory"
+  exit 1
+fi
+CONFIGS_DIR=$(cd -P "${CONFIGS_DIR}" &> /dev/null && pwd)
+
+podman pull ${IMAGE}
+podman run --userns=keep-id -ti --rm -v bedrock-admin-data:/home/bedrock/.aws -v "${CONFIGS_DIR}/":/home/bedrock/bedrock-configs:Z ${IMAGE}

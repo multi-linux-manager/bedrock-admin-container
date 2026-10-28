@@ -1,0 +1,152 @@
+name: Check and Update the container image
+
+on:
+  schedule:
+    # Run daily at 03:00 UTC
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+  # Rebuild right away when the build definition changes
+  push:
+    branches: [main]
+    paths:
+      - Containerfile
+      - 'files/**'
+      - .github/workflows/check-update-image.yaml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  check-conditions:
+    runs-on: ubuntu-latest
+    permissions:
+      packages: read
+    outputs:
+      needs_update: ${{ steps.evaluate.outputs.needs_update }}
+      reasons: ${{ steps.evaluate.outputs.reasons }}
+    steps:
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Evaluate image update conditions
+        id: evaluate
+        run: |
+          set -euo pipefail
+
+          # Normalize repository name to lowercase for GHCR compliance
+          IMAGE="ghcr.io/${GITHUB_REPOSITORY,,}:latest"
+          echo "Checking image: $IMAGE"
+          reasons=()
+
+          if [ "$GITHUB_EVENT_NAME" = "push" ]; then
+            reasons+=("build definition changed in ${GITHUB_SHA:0:7}")
+          elif ! docker manifest inspect "$IMAGE" >/dev/null 2>&1; then
+            reasons+=("image not found in GHCR")
+          else
+            docker pull -q "$IMAGE"
+
+            # Local state, as root, using only tools present in the final image
+            # (curl, unzip and awk are removed at build time)
+            local_state=$(docker run --rm --user 0 "$IMAGE" /bin/bash -c '
+              zypper -n -q ref >/dev/null 2>&1
+              if zypper -n dup --dry-run 2>&1 | grep -q "Nothing to do"; then
+                echo "RPM_UPDATES=false"
+              else
+                echo "RPM_UPDATES=true"
+              fi
+              v=$(aws --version 2>/dev/null) && v=${v%% *} && echo "AWS_LOCAL=${v#aws-cli/}"
+              # Prints "bedrock-admin version X.Y.Z"
+              v=$(bedrock-admin --version 2>/dev/null) && echo "BEDROCK_LOCAL=${v##* }"
+            ')
+            rpm_updates=$(grep -oP '^RPM_UPDATES=\K.*' <<<"$local_state" || true)
+            aws_local=$(grep -oP '^AWS_LOCAL=\K.*' <<<"$local_state" || true)
+            bedrock_local=$(grep -oP '^BEDROCK_LOCAL=\K.*' <<<"$local_state" || true)
+
+            # Remote state, from the runner (curl -f and set -e fail the job on lookup errors)
+            changelog=$(curl -fsSL https://raw.githubusercontent.com/aws/aws-cli/v2/CHANGELOG.rst)
+            aws_remote=$(grep -m1 -oE '^[0-9]+\.[0-9]+\.[0-9]+$' <<<"$changelog")
+            # Same latest-release lookup as the toolkit's install.sh
+            bedrock_tag=$(curl -fsSLI -o /dev/null -w '%{url_effective}' https://github.com/SUSE/bedrock-toolkit/releases/latest)
+            bedrock_tag=${bedrock_tag##*/}
+            [[ "$bedrock_tag" == v* ]] || { echo "Could not resolve latest bedrock-toolkit release"; exit 1; }
+            bedrock_remote=${bedrock_tag#v}
+
+            echo "RPM updates available: ${rpm_updates:-unknown}"
+            echo "AWS CLI: local=${aws_local:-missing} remote=$aws_remote"
+            echo "bedrock-toolkit: local=${bedrock_local:-none} remote=$bedrock_remote"
+
+            if [ "$rpm_updates" != "false" ]; then
+              reasons+=("openSUSE RPM updates available")
+            fi
+            if [ "$aws_local" != "$aws_remote" ]; then
+              reasons+=("AWS CLI ${aws_local:-missing} -> $aws_remote")
+            fi
+            if [ "$bedrock_local" != "$bedrock_remote" ]; then
+              reasons+=("bedrock-toolkit ${bedrock_local:-missing} -> $bedrock_remote")
+            fi
+          fi
+
+          if [ ${#reasons[@]} -gt 0 ]; then
+            echo "needs_update=true" >> "$GITHUB_OUTPUT"
+            (IFS=';'; echo "reasons=${reasons[*]}") >> "$GITHUB_OUTPUT"
+            (IFS=';'; echo "Update needed: ${reasons[*]}")
+          else
+            echo "needs_update=false" >> "$GITHUB_OUTPUT"
+            echo "reasons=All components up to date" >> "$GITHUB_OUTPUT"
+            echo "All components up to date"
+          fi
+
+  rebuild-and-push:
+    needs: check-conditions
+    if: needs.check-conditions.outputs.needs_update == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute image name and bedrock-toolkit release
+        id: meta
+        env:
+          REASONS: ${{ needs.check-conditions.outputs.reasons }}
+        run: |
+          set -euo pipefail
+          echo "Rebuild reasons: $REASONS"
+          # Normalize repository name to lowercase for GHCR compliance
+          echo "image=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+          # Same latest-release lookup as the toolkit's install.sh
+          tag=$(curl -fsSLI -o /dev/null -w '%{url_effective}' https://github.com/SUSE/bedrock-toolkit/releases/latest)
+          tag=${tag##*/}
+          [[ "$tag" == v* ]] || { echo "Could not resolve latest bedrock-toolkit release"; exit 1; }
+          echo "bedrock_version=$tag" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push container image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Containerfile
+          push: true
+          pull: true
+          no-cache: true
+          tags: ${{ steps.meta.outputs.image }}:latest
+          build-args: BEDROCK_VERSION=${{ steps.meta.outputs.bedrock_version }}

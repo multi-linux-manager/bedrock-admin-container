@@ -1,0 +1,45 @@
+# Copyright (C) 2026 SUSE LLC
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+alias rm='rm -i'
+alias cp='cp -i'
+alias mv='mv -i'
+export LS_OPTS='--color=auto'
+alias ls='ls ${LS_OPTS}'
+PS1='\[\033[01;31m\]\u\[\033[01;31m\]@BEDROCK-ADMIN\[\033[00m\]:\[\033[01;34m\]\w\[\033[01;36m\]$\[\033[00m\] '
+
+echo "Welcome!
+
+This container is used to make life easier for bedrock-admin users
+"
+
+if [ "$(ls -A ~/.aws)" ]; then
+  echo "Seems you already configured everything required by bedrock-admin in the past
+
+The guide for bedrock-admin is at https://github.com/SUSE/bedrock-toolkit/blob/main/admin-guide.md"
+else 
+  echo "Seems you still need to configure bedrock-admin.
+
+Do it now by following
+https://github.com/SUSE/bedrock-toolkit/blob/main/admin-guide.md
+but without installing neither aws-cli nor bedrock-toolkit, as they are
+already preinstalled
+
+Just use aws or bedrock-admin commands as needed"
+fi
+
+echo -e "\033[1m
+IMPORTANT! After doing changes to the yaml files, remember to commit and
+push outside the container\033[0m"
