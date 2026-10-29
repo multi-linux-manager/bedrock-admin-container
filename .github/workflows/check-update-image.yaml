@@ -154,5 +154,4 @@ jobs:
           no-cache: true
           tags: |
             ${{ steps.meta.outputs.image }}:latest
-            ${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.bedrock_version }}
           build-args: BEDROCK_VERSION=${{ steps.meta.outputs.bedrock_version }}
