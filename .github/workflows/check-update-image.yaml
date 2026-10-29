@@ -115,6 +115,10 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # Required to emulate ARM64 execution on the default x86 runner
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@5927c834f5b4fdf503fca6f4c7eccda82949e1ee # v4.4.0
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -145,8 +149,11 @@ jobs:
         with:
           context: .
           file: Containerfile
+          platforms: linux/amd64,linux/arm64
           push: true
           pull: true
           no-cache: true
-          tags: ${{ steps.meta.outputs.image }}:latest
+          tags: |
+            ${{ steps.meta.outputs.image }}:latest
+            ${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.bedrock_version }}
           build-args: BEDROCK_VERSION=${{ steps.meta.outputs.bedrock_version }}
