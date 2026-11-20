@@ -25,11 +25,10 @@ USER root
 
 # pipefail so a failed download fails the build instead of piping nothing to the installer
 RUN set -o pipefail && \
-    zypper -q ref && zypper -q dup -y && zypper -q install -y gawk curl vim unzip less && \
-    curl -fsSL https://awscli.amazonaws.com/v2/install.sh | bash -s -- --system && \
+    zypper -q ref && zypper -q dup -y --no-recommends && zypper -q install -y --no-recommends curl gawk vim && \
     bedrock_tag=${BEDROCK_VERSION#latest} && \
     curl -fsSL https://raw.githubusercontent.com/SUSE/bedrock-toolkit/${bedrock_tag:-main}/install.sh | VERSION=$bedrock_tag sh -s -- bedrock-admin && \
-    zypper -q -n remove gawk curl unzip && \
+    zypper -q -n remove -u curl gawk && \
     zypper -q clean
 
 RUN useradd -m -s /bin/bash bedrock

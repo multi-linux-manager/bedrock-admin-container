@@ -33,11 +33,17 @@ else
   echo "Seems you still need to configure bedrock-admin.
 
 Do it now by following
-https://github.com/SUSE/bedrock-toolkit/blob/main/admin-guide.md
-but without installing neither aws-cli nor bedrock-toolkit, as they are
-already preinstalled
+https://github.com/SUSE/high-impact-ai-initiative/blob/main/guidelines/bedrock/admin-guide.md#step-2-sign-in-to-the-account-with-sso
 
-Just use aws or bedrock-admin commands as needed"
+IMPORTANT NOTES ABOUT THE DOCUMENTATION!
+
+1. STEP 2: To call 'bedrock-admin configure sso' you need the
+   start-url and sso-region provided by SUSE at the internal repository
+   so do not use https://example.awsapps.com/start or us-east-1!
+2. STEP 3: It's not needed if you are going to manipulate existing teams
+   This is only useful to create new teams, but at least get familiar
+   with it, as it explains how to add users.
+"
 fi
 
 echo -e "\033[1m
