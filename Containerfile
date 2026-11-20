@@ -34,9 +34,11 @@ RUN set -o pipefail && \
 
 RUN useradd -m -s /bin/bash bedrock
 
-COPY files/bashrc /home/bedrock/.bashrc
+COPY --chown=bedrock:bedrock files/bashrc /home/bedrock/.bashrc
 
 VOLUME /home/bedrock/.aws
+
+RUN chown -R bedrock:bedrock /home/bedrock/.aws
 
 WORKDIR /home/bedrock/bedrock-configs
 
