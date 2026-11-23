@@ -62,32 +62,23 @@ jobs:
               else
                 echo "RPM_UPDATES=true"
               fi
-              v=$(aws --version 2>/dev/null) && v=${v%% *} && echo "AWS_LOCAL=${v#aws-cli/}"
               # Prints "bedrock-admin version X.Y.Z"
               v=$(bedrock-admin --version 2>/dev/null) && echo "BEDROCK_LOCAL=${v##* }"
             ')
             rpm_updates=$(grep -oP '^RPM_UPDATES=\K.*' <<<"$local_state" || true)
-            aws_local=$(grep -oP '^AWS_LOCAL=\K.*' <<<"$local_state" || true)
             bedrock_local=$(grep -oP '^BEDROCK_LOCAL=\K.*' <<<"$local_state" || true)
 
-            # Remote state, from the runner (curl -f and set -e fail the job on lookup errors)
-            changelog=$(curl -fsSL https://raw.githubusercontent.com/aws/aws-cli/v2/CHANGELOG.rst)
-            aws_remote=$(grep -m1 -oE '^[0-9]+\.[0-9]+\.[0-9]+$' <<<"$changelog")
-            # Same latest-release lookup as the toolkit's install.sh
+            # Remote state for the toolkit's install.sh
             bedrock_tag=$(curl -fsSLI -o /dev/null -w '%{url_effective}' https://github.com/SUSE/bedrock-toolkit/releases/latest)
             bedrock_tag=${bedrock_tag##*/}
             [[ "$bedrock_tag" == v* ]] || { echo "Could not resolve latest bedrock-toolkit release"; exit 1; }
             bedrock_remote=${bedrock_tag#v}
 
             echo "RPM updates available: ${rpm_updates:-unknown}"
-            echo "AWS CLI: local=${aws_local:-missing} remote=$aws_remote"
             echo "bedrock-toolkit: local=${bedrock_local:-none} remote=$bedrock_remote"
 
             if [ "$rpm_updates" != "false" ]; then
               reasons+=("openSUSE RPM updates available")
-            fi
-            if [ "$aws_local" != "$aws_remote" ]; then
-              reasons+=("AWS CLI ${aws_local:-missing} -> $aws_remote")
             fi
             if [ "$bedrock_local" != "$bedrock_remote" ]; then
               reasons+=("bedrock-toolkit ${bedrock_local:-missing} -> $bedrock_remote")
